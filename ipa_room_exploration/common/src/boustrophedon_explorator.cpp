@@ -117,6 +117,67 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 		return;
 	}
 
+	if (1)
+	{
+		cv::Point robot_pos = rotated_starting_point;
+		RoomRotator room_rotation;
+		cv::Mat R_inv;
+		cv::invertAffineTransform(R, R_inv);
+		cv::Vec3b start_color = {0, 255, 0};
+		cv::Vec3b end_color = {255, 0, 0};
+		cv::Mat cell_path_map;
+		cv::cvtColor(room_map, cell_path_map, cv::COLOR_GRAY2BGR);
+		cv::Mat cell_div_map;
+		cv::cvtColor(room_map, cell_div_map, cv::COLOR_GRAY2BGR);
+		size_t cell_count = cell_polygons.size();
+		cv::Point last_pt(-1, -1);
+		for (size_t cell = 0; cell < cell_polygons.size(); ++cell)
+		{
+			cv::Vec3b color;
+			color[0] = ((cell_count-cell) * start_color[0] + cell * end_color[0]) / cell_count;
+			color[1] = ((cell_count-cell) * start_color[1] + cell * end_color[1]) / cell_count;
+			color[2] = ((cell_count-cell) * start_color[2] + cell * end_color[2]) / cell_count;
+			char order[32];
+			sprintf(order, "%d", cell);
+			cv::Point center = cell_polygons[optimal_order[cell]].getCenter();
+			std::vector<cv::Point2f> pts;
+			pts.push_back(center);
+			std::vector<cv::Point2f> trans_pts;
+			cv::transform(pts, trans_pts, R_inv);
+
+			std::vector<cv::Point> poly = cell_polygons[optimal_order[cell]].getVertices();
+			std::vector<cv::Point> trans_poly;
+			cv::transform(poly, trans_poly, R_inv);
+			cv::drawContours(cell_div_map, std::vector<std::vector<cv::Point>>(1,trans_poly), -1, color, CV_FILLED);
+			cv::putText(cell_div_map, order, cv::Point(cvRound(trans_pts[0].x), cvRound(trans_pts[0].y)), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(128,128,128), 2);
+
+			std::vector<cv::Point2f> fov_middlepoint_path;
+			computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], fov_middlepoint_path,
+					robot_pos, grid_spacing_as_int, half_grid_spacing_as_int, path_eps, max_deviation_from_track, grid_obstacle_offset/map_resolution);
+			if (fov_middlepoint_path.empty())
+			{
+				continue;
+			}
+			cv::putText(cell_path_map, order, cv::Point(cvRound(trans_pts[0].x), cvRound(trans_pts[0].y)), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(128,128,128), 2);
+			std::vector<geometry_msgs::Pose2D> fov_poses;	// this is the trajectory of poses of the robot footprint or the field of view, in [pixels]
+			room_rotation.transformPathBackToOriginalRotation(fov_middlepoint_path, fov_poses, R);
+			for(size_t i=0; i<fov_poses.size()-1; ++i)
+			{
+				cv::circle(cell_path_map, cv::Point(cvRound(fov_poses[i].x), cvRound(fov_poses[i].y)), 1, color, CV_FILLED);
+				cv::line(cell_path_map, cv::Point(cvRound(fov_poses[i].x), cvRound(fov_poses[i].y)), cv::Point(cvRound(fov_poses[i+1].x), cvRound(fov_poses[i+1].y)), color, 1);
+			}
+			if (last_pt.x > 0)
+			{
+				cv::line(cell_path_map, last_pt, cv::Point(cvRound(fov_poses.front().x), cvRound(fov_poses.front().y)), cv::Scalar(0,0,255), 1);
+			}
+			cv::circle(cell_path_map, cv::Point(cvRound(fov_poses.front().x), cvRound(fov_poses.front().y)), 1, cv::Scalar(0,128,255), CV_FILLED);
+			cv::circle(cell_path_map, cv::Point(cvRound(fov_poses.back().x), cvRound(fov_poses.back().y)), 1, cv::Scalar(0,0,255), CV_FILLED);
+			last_pt = cv::Point(cvRound(fov_poses.back().x), cvRound(fov_poses.back().y));
+		}
+		cv::imwrite("/home/oscar/project/tmp/path.png", cell_path_map);
+		cv::imwrite("/home/oscar/project/tmp/cell.png", cell_div_map);
+	}
+
 	// go trough the cells [in optimal visiting order] and determine the boustrophedon paths
 	ROS_INFO("Starting to get the paths for each cell, number of cells: %d", (int)cell_polygons.size());
 	std::cout << "Boustrophedon grid_spacing_as_int=" << grid_spacing_as_int << std::endl;
@@ -132,6 +193,7 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 	RoomRotator room_rotation;
 	std::vector<geometry_msgs::Pose2D> fov_poses;	// this is the trajectory of poses of the robot footprint or the field of view, in [pixels]
 	room_rotation.transformPathBackToOriginalRotation(fov_middlepoint_path, fov_poses, R);
+
 #ifdef DEBUG_VISUALIZATION
 	std::cout << "printing path" << std::endl;
 	cv::Mat room_map_path = room_map.clone();

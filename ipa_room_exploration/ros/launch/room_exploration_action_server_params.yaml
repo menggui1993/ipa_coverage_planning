@@ -119,7 +119,7 @@ max_deviation_from_track: 0
 #   1 = the optimal visiting order of the cells is determined as TSP problem
 #   2 = alternative ordering from left to right (measured on y-coordinates of the cells), visits the cells in a more obvious fashion to the human observer (though it is not optimal)
 # int
-cell_visiting_order: 2
+cell_visiting_order: 1
 
 # parameters specific for the neural network explorator, see "A Neural Network Approach to Complete Coverage Path Planning" from Simon X. Yang and Chaomin Luo
 # =====================================================

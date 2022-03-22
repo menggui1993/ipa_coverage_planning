@@ -41,6 +41,8 @@ int main(int argc, char **argv)
 	// read params
 	bool use_test_maps;
 	priv_nh.param("use_test_maps", use_test_maps, true);
+	std::string src_map;
+	priv_nh.param<std::string>("src_map", src_map, "/home/oscar/test/map.png");
 	double resolution;
 	priv_nh.param("resolution", resolution, 0.05);
 	std::vector<double> origin (3,0);
@@ -59,11 +61,13 @@ int main(int argc, char **argv)
 	}
 
 	std::string image_path;
+	std::cout << src_map << std::endl;
 	if (use_test_maps)
 	{
 		// read in test map
-		const std::string test_map_path = ros::package::getPath("ipa_room_segmentation") + "/common/files/test_maps/";
-		image_path = test_map_path + "lab_ipa.png";
+		// const std::string test_map_path = ros::package::getPath("ipa_room_segmentation") + "/common/files/test_maps/";
+		// image_path = test_map_path + "lab_ipa.png";
+		image_path = src_map;
 	}
 	else
 	{
