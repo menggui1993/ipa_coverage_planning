@@ -59,6 +59,7 @@
 
 
 #include <ipa_room_exploration/room_exploration_action_server.h>
+#include <ipa_room_exploration/room_seg.h>
 
 // constructor
 RoomExplorationServer::RoomExplorationServer(ros::NodeHandle nh, std::string name_of_the_action) :
@@ -399,6 +400,7 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 	Eigen::Matrix<float, 2, 1> zero_vector;
 	zero_vector << 0, 0;
 	std::vector<geometry_msgs::Pose2D> exploration_path;
+	std::vector<std::vector<geometry_msgs::Pose2D>> path_pts;
 	if (room_exploration_algorithm_ == 1) // use grid point explorator
 	{
 		// plan path
@@ -410,10 +412,10 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 	else if (room_exploration_algorithm_ == 2) // use boustrophedon explorator
 	{
 		// plan path
-		if(planning_mode_ == PLAN_FOR_FOV)
-			boustrophedon_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
-		else
-			boustrophedon_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
+		// if(planning_mode_ == PLAN_FOR_FOV)
+			// boustrophedon_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+		// else
+			// boustrophedon_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
 	}
 	else if (room_exploration_algorithm_ == 3) // use neural network explorator
 	{
@@ -536,11 +538,46 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 	}
 	else if (room_exploration_algorithm_ == 8) // use boustrophedon variant explorator
 	{
+		cv::Mat seg_map;
+		float rotation;
+		int room_count;
+		segmentHouse(room_map, map_resolution, seg_map, rotation, room_count);
+		cv::Mat seg_room_img;
+		drawSegmentation(seg_map, room_count, seg_room_img);
+		cv::imwrite("/home/oscar/project/tmp/seg.png", seg_room_img);
+		cv::Mat path_map;
+		cv::cvtColor(room_map, path_map, cv::COLOR_GRAY2BGR);
+		
+		for (int i = 0; i < room_count; i++)
+		{
+			cv::Vec3b color((rand() % 250) + 1, (rand() % 250) + 1, (rand() % 250) + 1);
+			std::vector<std::vector<geometry_msgs::Pose2D>> pts;
+			cv::Mat room_img = (seg_map == (i<<2));
+			boustrophedon_variant_explorer_.getExplorationPath(room_img, exploration_path, pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+			for (int j = 0; j < pts.size(); j++)
+			{
+				for (int k = 0; k < pts[j].size()-1; k++)
+				{
+					cv::circle(path_map, cv::Point(cvRound(pts[j][k].x), cvRound(pts[j][k].y)), 1, color, CV_FILLED);
+					cv::line(path_map, cv::Point(cvRound(pts[j][k].x), cvRound(pts[j][k].y)), cv::Point(cvRound(pts[j][k+1].x), cvRound(pts[j][k+1].y)), color, 1);
+				}
+				cv::circle(path_map, cv::Point(cvRound(pts[j].back().x), cvRound(pts[j].back().y)), 1, color, CV_FILLED);
+				if (j != pts.size() - 1)
+				{
+					cv::line(path_map, cv::Point(cvRound(pts[j].back().x), cvRound(pts[j].back().y)), cv::Point(cvRound(pts[j+1].front().x), cvRound(pts[j+1].front().y)), cv::Scalar(0,0,255), 1);
+				}
+			}
+		}
+		cv::imwrite("/home/oscar/project/tmp/seg_path.png", path_map);
+
 		// plan path
 		if(planning_mode_ == PLAN_FOR_FOV)
-			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+		{
+			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+
+		}
 		else
-			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
+			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
 	}
 
 	// display finally planned path

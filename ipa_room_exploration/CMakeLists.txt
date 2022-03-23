@@ -144,6 +144,7 @@ add_library(${PROJECT_NAME} STATIC
 	common/src/flow_network_explorator.cpp
 	common/src/room_rotator.cpp
 	common/src/meanshift2d.cpp
+	common/src/room_seg.cpp
 )
 target_link_libraries(${PROJECT_NAME}
 	${catkin_LIBRARIES}

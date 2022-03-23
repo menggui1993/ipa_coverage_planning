@@ -44,7 +44,7 @@ BoustrophedonExplorer::BoustrophedonExplorer()
 //		middlepoint s.t. the distance to the last robot position is minimized. If this is not wanted one has to set the
 //		corresponding Boolean to false (shows that the path planning should be done for the robot footprint).
 // room_map = expects to receive the original, not inflated room map
-void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vector<geometry_msgs::Pose2D>& path,
+void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vector<geometry_msgs::Pose2D>& path, std::vector<std::vector<geometry_msgs::Pose2D>>& path_pts,
 		const float map_resolution, const cv::Point starting_position, const cv::Point2d map_origin,
 		const double grid_spacing_in_pixel, const double grid_obstacle_offset, const double path_eps, const int cell_visiting_order,
 		const bool plan_for_footprint, const Eigen::Matrix<float, 2, 1> robot_to_fov_vector, const double min_cell_area, const int max_deviation_from_track)
@@ -152,8 +152,16 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 			cv::putText(cell_div_map, order, cv::Point(cvRound(trans_pts[0].x), cvRound(trans_pts[0].y)), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(128,128,128), 2);
 
 			std::vector<cv::Point2f> fov_middlepoint_path;
-			computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], fov_middlepoint_path,
+			if (cell != cell_polygons.size()-1)
+			{
+				computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], &cell_polygons[optimal_order[cell+1]], fov_middlepoint_path,
 					robot_pos, grid_spacing_as_int, half_grid_spacing_as_int, path_eps, max_deviation_from_track, grid_obstacle_offset/map_resolution);
+			}
+			else
+			{
+				computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], 0, fov_middlepoint_path,
+					robot_pos, grid_spacing_as_int, half_grid_spacing_as_int, path_eps, max_deviation_from_track, grid_obstacle_offset/map_resolution);
+			}
 			if (fov_middlepoint_path.empty())
 			{
 				continue;
@@ -173,11 +181,14 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 			cv::circle(cell_path_map, cv::Point(cvRound(fov_poses.front().x), cvRound(fov_poses.front().y)), 1, cv::Scalar(0,128,255), CV_FILLED);
 			cv::circle(cell_path_map, cv::Point(cvRound(fov_poses.back().x), cvRound(fov_poses.back().y)), 1, cv::Scalar(0,0,255), CV_FILLED);
 			last_pt = cv::Point(cvRound(fov_poses.back().x), cvRound(fov_poses.back().y));
+			path_pts.push_back(fov_poses);
 		}
 		cv::imwrite("/home/oscar/project/tmp/path.png", cell_path_map);
 		cv::imwrite("/home/oscar/project/tmp/cell.png", cell_div_map);
 	}
 
+
+#if 0
 	// go trough the cells [in optimal visiting order] and determine the boustrophedon paths
 	ROS_INFO("Starting to get the paths for each cell, number of cells: %d", (int)cell_polygons.size());
 	std::cout << "Boustrophedon grid_spacing_as_int=" << grid_spacing_as_int << std::endl;
@@ -185,7 +196,7 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 	std::vector<cv::Point2f> fov_middlepoint_path;	// this is the trajectory of centers of the robot footprint or the field of view
 	for(size_t cell=0; cell<cell_polygons.size(); ++cell)
 	{
-		computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], fov_middlepoint_path,
+		computeBoustrophedonPath(rotated_room_map, map_resolution, cell_polygons[optimal_order[cell]], 0, fov_middlepoint_path,
 				robot_pos, grid_spacing_as_int, half_grid_spacing_as_int, path_eps, max_deviation_from_track, grid_obstacle_offset/map_resolution);
 	}
 
@@ -234,6 +245,7 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 	cv::erode(room_map, inflated_room_map, cv::Mat(), cv::Point(-1, -1), half_grid_spacing_as_int);
 	mapPath(inflated_room_map, path, fov_poses, robot_to_fov_vector, map_resolution, map_origin, robot_starting_position);
 
+#endif
 
 #ifdef DEBUG_VISUALIZATION
 	// testing
@@ -769,7 +781,7 @@ void BoustrophedonExplorer::correctThinWalls(cv::Mat& room_map)
 	}
 }
 
-void BoustrophedonExplorer::computeBoustrophedonPath(const cv::Mat& room_map, const float map_resolution, const GeneralizedPolygon& cell,
+void BoustrophedonExplorer::computeBoustrophedonPath(const cv::Mat& room_map, const float map_resolution, const GeneralizedPolygon& cell, const GeneralizedPolygon* next_cell,
 		std::vector<cv::Point2f>& fov_middlepoint_path, cv::Point& robot_pos,
 		const int grid_spacing_as_int, const int half_grid_spacing_as_int, const double path_eps, const int max_deviation_from_track, const int grid_obstacle_offset)
 {
@@ -857,17 +869,43 @@ void BoustrophedonExplorer::computeBoustrophedonPath(const cv::Mat& room_map, co
 	cv::Mat R_cell_inv;
 	cv::invertAffineTransform(R_cell, R_cell_inv);	// invert the rotation matrix to remap the determined points to the original cell
 	cv::transform(outer_corners, outer_corners, R_cell_inv);
-	double min_corner_dist = path_planner_.planPath(room_map, robot_pos, outer_corners[0], 1.0, 0.0, map_resolution);
-	int min_corner_index = 0;
-	for (int i=1; i<4; ++i)
+
+	double min_corner_dist = 100000;
+	int min_corner_index = -1;
+	for (int i = 0; i < 4; i++)
 	{
-		double dist = path_planner_.planPath(room_map, robot_pos, outer_corners[i], 1.0, 0.0, map_resolution);
+		double dist1 = path_planner_.planPath(room_map, robot_pos, outer_corners[i], 1.0, 0.0, map_resolution);
+		double dist2 = 0;
+		if (next_cell)
+		{
+			if (i < 2)
+			{
+				dist2 = MAX(fabs(cv::pointPolygonTest(next_cell->getVertices(), outer_corners[2], true)), fabs(cv::pointPolygonTest(next_cell->getVertices(), outer_corners[3], true)));
+			}
+			else
+			{
+				dist2 = MAX(fabs(cv::pointPolygonTest(next_cell->getVertices(), outer_corners[0], true)), fabs(cv::pointPolygonTest(next_cell->getVertices(), outer_corners[1], true)));
+			}
+		}
+		double dist = dist1 + dist2;
 		if (dist < min_corner_dist)
 		{
 			min_corner_dist = dist;
 			min_corner_index = i;
 		}
 	}
+
+	// double min_corner_dist = path_planner_.planPath(room_map, robot_pos, outer_corners[0], 1.0, 0.0, map_resolution);
+	// int min_corner_index = 0;
+	// for (int i=1; i<4; ++i)
+	// {
+	// 	double dist = path_planner_.planPath(room_map, robot_pos, outer_corners[i], 1.0, 0.0, map_resolution);
+	// 	if (dist < min_corner_dist)
+	// 	{
+	// 		min_corner_dist = dist;
+	// 		min_corner_index = i;
+	// 	}
+	// }
 	bool start_from_upper_path = (min_corner_index<2 ? true : false);
 	bool start_from_left = (min_corner_index%2==0 ? true : false); // boolean to determine on which side the path should start and to check where the path ended
 

@@ -285,7 +285,28 @@ std::vector<int> GeneticTSPSolver::solveGeneticTSP(const cv::Mat& original_map, 
 		return return_vector;
 	}
 
-	return (solveGeneticTSP(distance_matrix_ref, start_Node));
+	// return (solveGeneticTSP(distance_matrix_ref, start_Node));
+	// std::vector<int> order = solveGeneticTSP(distance_matrix_ref, start_Node);
+	// for (int i = 0; i < order.size(); i++)
+	// {
+	// 	std::cout << order[i] << ", ";
+	// }
+	// std::cout << "\n";
+
+	int num_nodes = distance_matrix_ref.rows;
+	cv::Mat distance_matrix_adjust = distance_matrix_ref.clone();
+	for (int i = 0; i < num_nodes; i++)
+	{
+		distance_matrix_adjust.at<double>(i, start_Node) = 0;
+	}
+	std::vector<int> return_order = solveGeneticTSP(distance_matrix_adjust, start_Node);
+	for (int i = 0; i < return_order.size(); i++)
+	{
+		std::cout << return_order[i] << ", ";
+	}
+	std::cout << "\n";
+	return return_order;
+
 }
 
 
