@@ -131,6 +131,9 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 		cv::cvtColor(room_map, cell_div_map, cv::COLOR_GRAY2BGR);
 		size_t cell_count = cell_polygons.size();
 		cv::Point last_pt(-1, -1);
+		std::cout << "grid_spacing_as_int: " << grid_spacing_as_int << std::endl;
+		std::cout << "half_grid_spacing_as_int: " << half_grid_spacing_as_int << std::endl;
+		std::cout << "grid_obstacle_offset/map_resolution: " << grid_obstacle_offset/map_resolution << std::endl;
 		for (size_t cell = 0; cell < cell_polygons.size(); ++cell)
 		{
 			cv::Vec3b color;
@@ -169,6 +172,10 @@ void BoustrophedonExplorer::getExplorationPath(const cv::Mat& room_map, std::vec
 			cv::putText(cell_path_map, order, cv::Point(cvRound(trans_pts[0].x), cvRound(trans_pts[0].y)), cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(128,128,128), 2);
 			std::vector<geometry_msgs::Pose2D> fov_poses;	// this is the trajectory of poses of the robot footprint or the field of view, in [pixels]
 			room_rotation.transformPathBackToOriginalRotation(fov_middlepoint_path, fov_poses, R);
+			if (fov_poses.empty())
+			{
+				continue;
+			}
 			for(size_t i=0; i<fov_poses.size()-1; ++i)
 			{
 				cv::circle(cell_path_map, cv::Point(cvRound(fov_poses[i].x), cvRound(fov_poses[i].y)), 1, color, CV_FILLED);

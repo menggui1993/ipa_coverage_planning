@@ -538,6 +538,7 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 	}
 	else if (room_exploration_algorithm_ == 8) // use boustrophedon variant explorator
 	{
+		cv::imwrite("/home/oscar/project/tmp/map.png", room_map);
 		cv::Mat seg_map;
 		float rotation;
 		int room_count;
@@ -548,14 +549,20 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 		cv::Mat path_map;
 		cv::cvtColor(room_map, path_map, cv::COLOR_GRAY2BGR);
 		
+		cv::Point robot_pos = starting_position;
 		for (int i = 0; i < room_count; i++)
 		{
-			cv::Vec3b color((rand() % 250) + 1, (rand() % 250) + 1, (rand() % 250) + 1);
+			cv::Vec3b end_color((rand() % 250) + 1, (rand() % 250) + 1, (rand() % 250) + 1);
+			cv::Vec3b start_color(start_color[0]/5*4, start_color[1]/5*4, start_color[2]/5*4);
 			std::vector<std::vector<geometry_msgs::Pose2D>> pts;
 			cv::Mat room_img = (seg_map == (i<<2));
-			boustrophedon_variant_explorer_.getExplorationPath(room_img, exploration_path, pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+			boustrophedon_variant_explorer_.getExplorationPath(room_img, exploration_path, pts, map_resolution, robot_pos, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
 			for (int j = 0; j < pts.size(); j++)
 			{
+				cv::Vec3b color;
+				color[0] = (start_color[0] *j + end_color[0] * (pts.size()-j)) / pts.size();
+				color[1] = (start_color[1] *j + end_color[1] * (pts.size()-j)) / pts.size();
+				color[2] = (start_color[2] *j + end_color[2] * (pts.size()-j)) / pts.size();
 				for (int k = 0; k < pts[j].size()-1; k++)
 				{
 					cv::circle(path_map, cv::Point(cvRound(pts[j][k].x), cvRound(pts[j][k].y)), 1, color, CV_FILLED);
@@ -566,18 +573,25 @@ void RoomExplorationServer::exploreRoom(const ipa_building_msgs::RoomExploration
 				{
 					cv::line(path_map, cv::Point(cvRound(pts[j].back().x), cvRound(pts[j].back().y)), cv::Point(cvRound(pts[j+1].front().x), cvRound(pts[j+1].front().y)), cv::Scalar(0,0,255), 1);
 				}
+				// cv::Point center(cvRound(pts[j][pts[j].size()/2].x), cvRound(pts[j][pts[j].size()/2].y));
+				// char order[16];
+				// sprintf(order, "%d", j);
+				// cv::putText(path_map, order, center, cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Vec3b(255-end_color[0], 255-end_color[1], 255-end_color[2]), 2);
 			}
+			robot_pos = cv::Point(cvRound(pts[pts.size()-1].back().x), cvRound(pts[pts.size()-1].back().y));
+			cv::Point first_pt(cvRound(pts[0].front().x), cvRound(pts[0].front().y));
+			cv::circle(path_map, first_pt, 1, cv::Scalar(0,0,255), CV_FILLED);
 		}
 		cv::imwrite("/home/oscar/project/tmp/seg_path.png", path_map);
 
 		// plan path
-		if(planning_mode_ == PLAN_FOR_FOV)
-		{
-			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
+		// if(planning_mode_ == PLAN_FOR_FOV)
+		// {
+		// 	boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, false, fitting_circle_center_point_in_meter, min_cell_area_, max_deviation_from_track_);
 
-		}
-		else
-			boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
+		// }
+		// else
+		// 	boustrophedon_variant_explorer_.getExplorationPath(room_map, exploration_path, path_pts, map_resolution, starting_position, map_origin, grid_spacing_in_pixel, grid_obstacle_offset_, path_eps_, cell_visiting_order_, true, zero_vector, min_cell_area_, max_deviation_from_track_);
 	}
 
 	// display finally planned path
